@@ -13,9 +13,10 @@ const prisma = new PrismaClient({
 */
 export const auth = betterAuth({
     baseURL: process.env.BETTER_AUTH_URL, 
-    trustedOrigins: [process.env.BETTER_AUTH_URL as string],
+    trustedOrigins: [process.env.WEB_APP_BASE_URL as string],
     socialProviders: {
-      google: { 
+      google: {
+          prompt: "select_account",
           clientId: process.env.GOOGLE_CLIENT_ID as string, 
           clientSecret: process.env.GOOGLE_CLIENT_SECRET as string, 
       }, 

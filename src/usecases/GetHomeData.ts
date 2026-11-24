@@ -1,6 +1,5 @@
 import dayjs from "dayjs";
 
-import { NotFoundError } from "../errors/index.js";
 import { WeekDay } from "../generated/prisma/enums.js";
 import { prisma } from "../lib/db.js";
 import {
@@ -9,6 +8,7 @@ import {
   formatDay,
   getWeekDay,
   groupSessionsByDay,
+  WEEK_DAYS,
 } from "./helpers/workout-consistency.js";
 
 interface InputDto {
@@ -17,7 +17,7 @@ interface InputDto {
 }
 
 interface OutputDto {
-  activeWorkoutPlanId: string;
+  activeWorkoutPlanId?: string;
   todayWorkoutDay?: {
     workoutPlanId: string;
     id: string;
@@ -46,10 +46,6 @@ export class GetHomeData {
         },
       },
     });
-
-    if (!activeWorkoutPlan) {
-      throw new NotFoundError("Active workout plan not found");
-    }
 
     const userSessionsFilter = {
       workoutDay: { workoutPlan: { userId: dto.userId } },
@@ -85,12 +81,19 @@ export class GetHomeData {
       }),
     );
 
-    const todayWorkoutDay = activeWorkoutPlan.workoutDays.find(
+    const todayWorkoutDay = activeWorkoutPlan?.workoutDays.find(
       (day) => day.weekDay === getWeekDay(date),
     );
 
+    // Sem plano ativo, todo dia da semana conta para a sequência
+    const planWeekDays = new Set(
+      activeWorkoutPlan
+        ? activeWorkoutPlan.workoutDays.map((day) => day.weekDay)
+        : WEEK_DAYS,
+    );
+
     return {
-      activeWorkoutPlanId: activeWorkoutPlan.id,
+      activeWorkoutPlanId: activeWorkoutPlan?.id,
       todayWorkoutDay: todayWorkoutDay && {
         workoutPlanId: todayWorkoutDay.workoutPlanId,
         id: todayWorkoutDay.id,
@@ -105,9 +108,7 @@ export class GetHomeData {
         completedDays: new Set(
           completedSessions.map((session) => formatDay(session.startedAt)),
         ),
-        planWeekDays: new Set(
-          activeWorkoutPlan.workoutDays.map((day) => day.weekDay),
-        ),
+        planWeekDays,
         referenceDate: date,
       }),
       consistencyByDay,

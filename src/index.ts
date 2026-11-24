@@ -32,7 +32,7 @@ await app.register(fastifySwagger, {
     },
     servers: [{
       description: "Localhost",
-      url: "http://localhost:3000",
+      url: process.env.BETTER_AUTH_URL as string,
     }],
   },
   transform: jsonSchemaTransform,
@@ -41,7 +41,7 @@ await app.register(fastifySwagger, {
  
 
 await app.register(fastifyCors, {
-  origin: ["http://localhost:3000"],
+  origin: [process.env.WEB_APP_BASE_URL as string],
   credentials: true,
 });
 
@@ -107,6 +107,9 @@ app.withTypeProvider<ZodTypeProvider>().route({
 app.route({
   method: ["GET", "POST"],
   url: "/api/auth/*",
+  schema: {
+    hide: true,
+  },
   async handler(request, reply) {
     try {
       // Construct request URL
@@ -141,7 +144,7 @@ app.route({
 
 // Run the server!
 try {
- await app.listen({ port: Number(process.env.PORT) || 3000 })
+ await app.listen({ port: Number(process.env.PORT) || 8080 })
 } catch (err) {
  app.log.error(err)
  process.exit(1)

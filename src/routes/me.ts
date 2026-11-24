@@ -19,6 +19,7 @@ export const meRoutes = async (app: FastifyInstance) => {
     url: "/",
     schema: {
       tags: ["Me"],
+      operationId: "getUserTrainData",
       summary: "Get the authenticated user's train data",
       response: {
         200: UserTrainDataResponseSchema,
@@ -64,6 +65,7 @@ export const meRoutes = async (app: FastifyInstance) => {
     url: "/",
     schema: {
       tags: ["Me"],
+      operationId: "upsertUserTrainData",
       summary: "Create or update the authenticated user's train data",
       body: UpsertUserTrainDataSchema,
       response: {
