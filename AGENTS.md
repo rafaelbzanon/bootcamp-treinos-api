@@ -23,7 +23,7 @@ API REST de treinos construída com **Fastify 5**, **TypeScript**, **Prisma 7** 
 | Runtime      | Node 24, ESM (`"type": "module"`), TypeScript 5.9 strict               |
 | Servidor     | Fastify 5 com `ZodTypeProvider` (validação e serialização via Zod)       |
 | Banco        | PostgreSQL 16, Prisma 7.4, `@prisma/adapter-pg` (connection pool)        |
-| Autenticação | Better-Auth com email/senha, adaptador Prisma, plugin `openAPI`          |
+| Autenticação | Better-Auth com login Google (email/senha **não** está habilitado), adaptador Prisma, plugin `openAPI` |
 | Documentação | Scalar em `/docs`, Swagger JSON em `/swagger.json`                        |
 
 ---
@@ -33,8 +33,9 @@ API REST de treinos construída com **Fastify 5**, **TypeScript**, **Prisma 7** 
 ```
 src/
   index.ts             — Aplicação Fastify, middlewares, registro de rotas
-  routes/              — Handlers das rotas (módulos plugin do Fastify)
+  routes/              — Handlers das rotas (plugins do Fastify, registrados com prefix em index.ts)
   usecases/            — Lógica de negócio (uma classe por caso de uso)
+    helpers/             → Lógica compartilhada (streak, consistência por dia, datas em UTC)
   schemas/             — Schemas Zod para validação e tipos OpenAPI
   lib/                 — Infraestrutura compartilhada
     db.ts                → PrismaClient (singleton com adapter pg)
@@ -43,6 +44,8 @@ src/
   generated/prisma/    — Saída do Prisma Client (gitignored, regenerado)
 prisma/
   schema.prisma        — Modelo de dados
+prisma.config.ts       — Carrega o .env e define a URL do banco (o schema não tem `url`)
+tasks/                 — Specs das features (NN.md), implementadas pelo agente
 ```
 
 ---
@@ -52,26 +55,37 @@ prisma/
 ```bash
 pnpm install                   # pnpm apenas — .npmrc força engine-strict
 docker compose up -d           # Inicia PostgreSQL 16
+# crie o .env (veja abaixo) antes dos comandos do Prisma
 pnpm exec prisma generate      # Gera Prisma Client → src/generated/prisma/
-pnpm exec prisma db push       # Aplica schema no banco (sem migrations)
+pnpm exec prisma db push       # Aplica schema no banco do .env (sem migrations)
 pnpm dev                       # Inicia servidor dev com tsx --watch
 ```
 
-**Pré-requisito**: Node.js 24.x (`engines.node` no `package.json`).
+**Pré-requisitos**: Node.js 24.x e pnpm 10.30.0 (via Corepack).
 
 ---
 
 ## Variáveis de Ambiente
 
-Copie/use o arquivo `.env` na raiz do projeto. Variáveis obrigatórias:
+O arquivo `.env` fica na raiz do projeto e não é versionado. Variáveis:
 
-| Variável              | Descrição                                      |
-| --------------------- | ---------------------------------------------- |
-| `DATABASE_URL`        | String de conexão PostgreSQL                   |
-| `BETTER_AUTH_SECRET`  | String aleatória para o Better-Auth            |
-| `PORT`                | Porta do servidor (padrão: `3000`)             |
+| Variável               | Descrição                                                        |
+| ---------------------- | ---------------------------------------------------------------- |
+| `PORT`                 | Porta do servidor (padrão: `3000`)                               |
+| `DATABASE_URL`         | String de conexão PostgreSQL                                     |
+| `BETTER_AUTH_SECRET`   | String aleatória para o Better-Auth                              |
+| `BETTER_AUTH_URL`      | URL base da API (`http://localhost:3000`), também usada como origem confiável |
+| `GOOGLE_CLIENT_ID`     | OAuth do Google (pode ficar vazio; sem ele não há login real)    |
+| `GOOGLE_CLIENT_SECRET` | OAuth do Google (pode ficar vazio)                               |
 
-> **Atenção**: o `docker-compose` cria o banco com nome `bootcamp-treinos-api`, mas o `.env` referencia `bootcamp-treinos-db`. Certifique-se de que ambos coincidem antes de executar.
+### Bancos de dados nesta máquina
+
+O container `bootcamp-treinos-api-postgres` tem dois bancos:
+
+- **`bootcamp-treinos-api-dev`**: é o banco do `.env`, sincronizado com o `schema.prisma` via `db push`. Use-o para desenvolver e testar. Ele contém dados de teste (usuários `user-a`, `user-b` e `user-c`).
+- **`bootcamp-treinos-api`**: foi criado por migrations de outra cópia do projeto (`C:\a\dev_mobile_IFRS_2026-main\bootcamp-treinos-api`), está fora de sincronia com o schema e não roda a API. **Nunca rode `prisma db push` contra ele** sem autorização, porque isso pode apagar dados.
+
+O container é compartilhado com essa outra cópia (mesmo nome de projeto Compose). Use `docker compose up -d` com cuidado, porque ele pode recriar o container.
 
 ---
 
@@ -82,7 +96,8 @@ Copie/use o arquivo `.env` na raiz do projeto. Variáveis obrigatórias:
 | `pnpm dev`                       | Inicia servidor dev com hot-reload (tsx --watch)             |
 | `pnpm build`                     | Compila TypeScript (`tsc`)                                   |
 | `pnpm start`                     | Inicia em produção (`node dist/index.js`)                    |
-| `pnpm exec eslint .`             | Executa lint em todos os arquivos                            |
+| `pnpm lint`                      | Executa lint em todos os arquivos (`eslint .`)               |
+| `pnpm exec tsc --noEmit`         | Checagem de tipos                                            |
 | `pnpm exec prisma generate`      | Regenera o Prisma Client após alterações no schema           |
 | `pnpm exec prisma db push`       | Aplica o schema do Prisma no banco de dados                  |
 
@@ -115,6 +130,8 @@ Copie/use o arquivo `.env` na raiz do projeto. Variáveis obrigatórias:
 
 - Para rotas protegidas, recupere a sessão com `auth.api.getSession({ headers: fromNodeHeaders(request.headers) })` de `better-auth/node`.
 - `fromNodeHeaders` converte os headers do Fastify para o formato esperado pelo Better-Auth.
+- Recursos de outro usuário retornam `NotFoundError` (404), para não revelar que existem.
+- **Testar rotas protegidas sem Google:** crie `user` e `session` direto no banco dev e envie o cookie `better-auth.session_token=<token>.<HMAC-SHA256(token, BETTER_AUTH_SECRET) em base64>`, com URL-encode. Os usuários de teste têm os tokens `tokena`, `tokenb` e `tokenc`.
 
 ### Use Cases
 
@@ -128,8 +145,15 @@ Copie/use o arquivo `.env` na raiz do projeto. Variáveis obrigatórias:
 ### Erros
 
 - Erros customizados são classes em `src/errors/index.ts` que estendem `Error`.
-- Exemplos existentes: `NotFoundError`, `WorkoutPlanNotActiveError`, `SessionAlreadyStartedError`.
-- O handler da rota mapeia cada erro customizado para o status HTTP correspondente (ex: `NotFoundError` → 404, `SessionAlreadyStartedError` → 409).
+- Erros existentes e o mapeamento feito na rota (`{ error, code }`):
+
+| Erro                            | Status | `code`                       |
+| ------------------------------- | ------ | ---------------------------- |
+| `NotFoundError`                 | 404    | `NOT_FOUND_ERROR`            |
+| `WorkoutPlanNotActiveError`     | 400    | `WORKOUT_PLAN_NOT_ACTIVE`    |
+| `InvalidSessionCompletionError` | 400    | `INVALID_SESSION_COMPLETION` |
+| `SessionAlreadyStartedError`    | 409    | `SESSION_ALREADY_STARTED`    |
+| (qualquer outro)                | 500    | `INTERNAL_SERVER_ERROR`      |
 
 ### Nomenclatura
 
@@ -157,13 +181,20 @@ Copie/use o arquivo `.env` na raiz do projeto. Variáveis obrigatórias:
 
 ---
 
-## Observações
+## Estado do Projeto
 
-- `tsconfig.json` está com `"outDir": "./dist"` comentado — `pnpm build` / `tsc` não gera `dist/` até que seja descomentado. `pnpm start` falhará sem isso.
-- Ainda não há testes configurados.
-- O diretório aninhado `bootcamp-treinos-api/` parece ser um repositório git interno — ignore-o a menos que seja rastreado intencionalmente.
+- **Implementado:** as tasks `01`–`07` de `tasks/`, mais `PUT /me` e a validação de que `completedAt` não pode ser anterior a `startedAt`. A lista de endpoints está no `README.md`.
+- **Pendente:** a task `08` (chat com IA em `src/routes/ai.ts`). Ela depende de o usuário escolher o provedor (OpenAI ou Google), instalar o AI SDK e configurar uma chave de API, além de criar o use case `ListWorkoutPlans`.
+- **Regras de negócio que não estão nas specs:**
+  - **Streak:** conta para trás a partir da data de referência (`date` na home; o menor entre `to` e hoje no stats). Dias fora do plano ativo não quebram a sequência; dias do plano sem sessão concluída quebram, inclusive descanso. O dia de referência ainda não concluído não quebra.
+  - **Home:** sem plano ativo, retorna 404. `todayWorkoutDay` é opcional.
+  - **Stats:** `from > to` retorna 400.
+  - **Dados de treino:** ficam em campos opcionais de `User`, e `bodyFatPercentage` é `Float` (1 = 100%). `GET /me` retorna `null` enquanto algum campo estiver vazio.
+- **Testes:** não há testes automatizados. Valide com `pnpm exec tsc --noEmit`, `pnpm lint` e chamadas reais à API no banco dev.
+- **Auditoria de ambiente:** siga `Prompt-verificacao-projeto.md`, inclusive a tabela de desvios aprovados.
 
 ### Git
 
 - **NUNCA** faça commits sem autorização explícita do usuário. Sempre solicite permissão antes de commitar.
 - Use [Conventional Commits](https://www.conventionalcommits.org/) para mensagens de commit: `feat:`, `fix:`, `docs:`, `refactor:`, etc.
+- Remoto: `origin` → `https://github.com/rafaelbzanon/bootcamp-treinos-api.git`, branch `main`. Faça push apenas quando o usuário pedir.
