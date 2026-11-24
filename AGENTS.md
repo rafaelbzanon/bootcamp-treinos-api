@@ -71,10 +71,11 @@ O arquivo `.env` fica na raiz do projeto e não é versionado. Variáveis:
 
 | Variável               | Descrição                                                        |
 | ---------------------- | ---------------------------------------------------------------- |
-| `PORT`                 | Porta do servidor (padrão: `3000`)                               |
+| `PORT`                 | Porta do servidor (`8080`; o front-end usa a 3000)               |
 | `DATABASE_URL`         | String de conexão PostgreSQL                                     |
 | `BETTER_AUTH_SECRET`   | String aleatória para o Better-Auth                              |
-| `BETTER_AUTH_URL`      | URL base da API (`http://localhost:3000`), também usada como origem confiável |
+| `BETTER_AUTH_URL`      | URL da própria API (`http://localhost:8080`); também é o `servers` do OpenAPI |
+| `WEB_APP_BASE_URL`     | URL do front-end (`http://localhost:3000`); única origem do CORS e do `trustedOrigins` |
 | `GOOGLE_CLIENT_ID`     | OAuth do Google (pode ficar vazio; sem ele não há login real)    |
 | `GOOGLE_CLIENT_SECRET` | OAuth do Google (pode ficar vazio)                               |
 
@@ -183,11 +184,15 @@ O container é compartilhado com essa outra cópia (mesmo nome de projeto Compos
 
 ## Estado do Projeto
 
-- **Implementado:** as tasks `01`–`07` de `tasks/`, mais `PUT /me` e a validação de que `completedAt` não pode ser anterior a `startedAt`. A lista de endpoints está no `README.md`.
-- **Pendente:** a task `08` (chat com IA em `src/routes/ai.ts`). Ela depende de o usuário escolher o provedor (OpenAI ou Google), instalar o AI SDK e configurar uma chave de API, além de criar o use case `ListWorkoutPlans`.
+- **Implementado:** as tasks `01`–`07` de `tasks/`, mais `PUT /me`, `GET /workout-plans` (`ListWorkoutPlans`, com filtro `active`) e a validação de que `completedAt` não pode ser anterior a `startedAt`. A lista de endpoints com os `operationId` está no `README.md`.
+- **Pendente:** a task `08` (chat com IA em `src/routes/ai.ts`). Ela depende de o usuário escolher o provedor (OpenAI ou Google), instalar o AI SDK e configurar uma chave de API. A tool `getWorkoutPlans` deve usar o `ListWorkoutPlans`.
+- **Contrato com o front-end** (`pratico-frontend-react-nextjs.md`, projeto `bootcamp-treinos-frontend`): o front gera suas funções com Orval a partir do `/swagger.json`.
+  - Toda rota usada pelo front precisa de `operationId`, que vira o nome da função gerada.
+  - `/api/auth/*` e `/swagger.json` ficam fora do spec (`hide: true`).
+  - Depois de mudar o contrato, é preciso rodar `npx orval` no front.
 - **Regras de negócio que não estão nas specs:**
   - **Streak:** conta para trás a partir da data de referência (`date` na home; o menor entre `to` e hoje no stats). Dias fora do plano ativo não quebram a sequência; dias do plano sem sessão concluída quebram, inclusive descanso. O dia de referência ainda não concluído não quebra.
-  - **Home:** sem plano ativo, retorna 404. `todayWorkoutDay` é opcional.
+  - **Home:** sem plano ativo, retorna 200 com `activeWorkoutPlanId` e `todayWorkoutDay` ausentes, e todos os dias da semana contam para o streak. O front usa isso para redirecionar ao onboarding; não volte a lançar 404.
   - **Stats:** `from > to` retorna 400.
   - **Dados de treino:** ficam em campos opcionais de `User`, e `bodyFatPercentage` é `Float` (1 = 100%). `GET /me` retorna `null` enquanto algum campo estiver vazio.
 - **Testes:** não há testes automatizados. Valide com `pnpm exec tsc --noEmit`, `pnpm lint` e chamadas reais à API no banco dev.

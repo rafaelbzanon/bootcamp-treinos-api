@@ -27,22 +27,24 @@ docker compose up -d          # sobe o PostgreSQL 16 na porta 5432
 # crie o arquivo .env (veja abaixo)
 pnpm exec prisma generate     # gera o Prisma Client em src/generated/prisma
 pnpm exec prisma db push      # cria as tabelas a partir do schema
-pnpm dev                      # servidor com hot-reload em http://localhost:3000
+pnpm dev                      # servidor com hot-reload em http://localhost:8080
 ```
 
 ### Variáveis de ambiente (`.env`)
 
 ```env
-PORT=3000
+PORT=8080
 DATABASE_URL="postgresql://postgres:password@localhost:5432/bootcamp-treinos-api"
 BETTER_AUTH_SECRET=<valor aleatório>
-BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:8080
+WEB_APP_BASE_URL=http://localhost:3000
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
 
 - Gere o `BETTER_AUTH_SECRET` com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
-- O login usa o Google. Crie um OAuth Client do tipo *Web application* no Google Cloud com o redirect URI `http://localhost:3000/api/auth/callback/google` e preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`. Sem eles a API sobe normalmente, mas não é possível fazer login.
+- `BETTER_AUTH_URL` é a URL da própria API. `WEB_APP_BASE_URL` é a URL do front-end (`bootcamp-treinos-frontend`, Next.js na porta 3000), a única origem liberada no CORS e no Better Auth.
+- O login usa o Google. Crie um OAuth Client do tipo *Web application* no Google Cloud com a origem `http://localhost:8080` e o redirect URI `http://localhost:8080/api/auth/callback/google`, e preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`. Sem eles a API sobe normalmente, mas não é possível fazer login.
 
 ## Comandos
 
@@ -61,20 +63,23 @@ O projeto ainda não tem testes automatizados.
 
 ## Endpoints
 
-A documentação interativa fica em **http://localhost:3000/docs**. Ela reúne o OpenAPI da API (`/swagger.json`) e o do Better Auth. Todas as rotas abaixo, exceto as de documentação e autenticação, exigem uma sessão autenticada.
+A documentação interativa fica em **http://localhost:8080/docs**. Ela reúne o OpenAPI da API (`/swagger.json`) e o do Better Auth. Todas as rotas abaixo, exceto as de documentação e autenticação, exigem uma sessão autenticada.
 
-| Método | Rota | Descrição |
-| --- | --- | --- |
-| `POST` | `/workout-plans` | Cria um plano de treino; o plano ativo anterior do usuário é desativado |
-| `GET` | `/workout-plans/:workoutPlanId` | Plano com seus dias (com a contagem de exercícios) |
-| `GET` | `/workout-plans/:workoutPlanId/days/:workoutDayId` | Dia de treino com exercícios e sessões |
-| `POST` | `/workout-plans/:workoutPlanId/days/:workoutDayId/sessions` | Inicia uma sessão de treino |
-| `PATCH` | `/workout-plans/:workoutPlanId/days/:workoutDayId/sessions/:sessionId` | Conclui uma sessão (`completedAt`) |
-| `GET` | `/home/:date` | Dados da página inicial: treino do dia, consistência da semana e streak |
-| `GET` | `/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` | Estatísticas do período: consistência, streak, taxa de conclusão e tempo total |
-| `GET` | `/me` | Dados de treino do usuário (`null` se ainda não cadastrados) |
-| `PUT` | `/me` | Cria ou atualiza os dados de treino (peso, altura, idade, % de gordura) |
-| `GET/POST` | `/api/auth/*` | Rotas do Better Auth |
+O front-end gera suas funções de acesso com **Orval** a partir do `/swagger.json`, usando o `operationId` de cada rota como nome da função. Depois de mudar o contrato da API, rode `npx orval` no front-end.
+
+| Método | Rota | `operationId` | Descrição |
+| --- | --- | --- | --- |
+| `GET` | `/workout-plans?active=true\|false` | `listWorkoutPlans` | Planos do usuário (mais recentes primeiro), com dias e exercícios; `active` é opcional |
+| `POST` | `/workout-plans` | `createWorkoutPlan` | Cria um plano de treino; o plano ativo anterior do usuário é desativado |
+| `GET` | `/workout-plans/:workoutPlanId` | `getWorkoutPlan` | Plano com seus dias (com a contagem de exercícios) |
+| `GET` | `/workout-plans/:workoutPlanId/days/:workoutDayId` | `getWorkoutDay` | Dia de treino com exercícios e sessões |
+| `POST` | `/workout-plans/:workoutPlanId/days/:workoutDayId/sessions` | `startWorkoutSession` | Inicia uma sessão de treino |
+| `PATCH` | `/workout-plans/:workoutPlanId/days/:workoutDayId/sessions/:sessionId` | `updateWorkoutSession` | Conclui uma sessão (`completedAt`) |
+| `GET` | `/home/:date` | `getHomeData` | Página inicial: treino do dia, consistência da semana e streak. Sem plano ativo, `activeWorkoutPlanId` e `todayWorkoutDay` vêm vazios (o front usa isso para levar ao onboarding) |
+| `GET` | `/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` | `getStats` | Estatísticas do período: consistência, streak, taxa de conclusão e tempo total |
+| `GET` | `/me` | `getUserTrainData` | Dados de treino do usuário (`null` se ainda não cadastrados) |
+| `PUT` | `/me` | `upsertUserTrainData` | Cria ou atualiza os dados de treino (peso, altura, idade, % de gordura) |
+| `GET/POST` | `/api/auth/*` | — | Rotas do Better Auth (fora do `/swagger.json`) |
 
 Erros seguem o formato `{ "error": string, "code": string }`. Recursos de outro usuário retornam 404.
 
