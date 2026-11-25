@@ -8,10 +8,11 @@ As regras obrigatórias de arquitetura, TypeScript e Git estão em `.claude/rule
 
 Os arquivos de configuração (`package.json`, `tsconfig.json`, `eslint.config.js`, `prisma.config.ts`, `docker-compose.yml`, `.npmrc`, `.nvmrc`, `.env`) foram montados a partir de `Configuracao_projeto_dev_movel_final.md` e `guia-setup-ambiente-bootcamp-treinos.md` (pnpm oficial: **10.30.0**). O remoto é `https://github.com/rafaelbzanon/bootcamp-treinos-api.git`, branch `main`.
 
-- O container `bootcamp-treinos-api-postgres` (banco `bootcamp-treinos-api`) é compartilhado com uma cópia do projeto em `C:\a\dev_mobile_IFRS_2026-main\bootcamp-treinos-api` (mesmo nome de projeto Compose). Use `docker compose up -d` com cuidado, porque ele pode recriar esse container.
-- O `.env` aponta para o banco **`bootcamp-treinos-api-dev`**, que fica no mesmo container e é sincronizado com o `schema.prisma` via `db push`. É nele que se desenvolve e testa. O banco `bootcamp-treinos-api` (da outra cópia) não roda a API.
+- O container `bootcamp-treinos-api-postgres` (PostgreSQL 16, volume `bootcamp-treinos-api_postgres_data`) é publicado em **`127.0.0.1:5433`**, porque a 5432 é ocupada pelo serviço `postgresql-x64-18` do Windows (inicialização automática). Não volte para a 5432.
+- O `.env` (não versionado) tem `PORT=8080`, `DATABASE_URL` para `localhost:5433/bootcamp-treinos-api-dev`, `BETTER_AUTH_SECRET` gerado localmente, `BETTER_AUTH_URL=http://localhost:8080`, `WEB_APP_BASE_URL=http://localhost:3000` e `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` vazias (o aviso `Social provider google is missing clientId or clientSecret` no `pnpm dev` é esperado). Se ele sumir, recrie com essas chaves; o `prisma.config.ts` falha sem `DATABASE_URL`.
+- **`bootcamp-treinos-api-dev`** é o banco da API: foi criado vazio e sincronizado com o `schema.prisma` via `db push` (sem migrations). O banco `bootcamp-treinos-api` (o `POSTGRES_DB` do compose) existe mas fica vazio e não é usado.
 - O login só tem Google habilitado. Para testar rotas protegidas, crie `user` e `session` direto no banco dev e envie o cookie `better-auth.session_token=<token>.<HMAC-SHA256(token, BETTER_AUTH_SECRET) em base64>`, com URL-encode.
-- **Não rode `prisma db push` no banco `bootcamp-treinos-api` sem confirmar com o usuário.** O banco foi criado por migrations daquela cópia (tabela `workout_session`), mas o `schema.prisma` daqui mapeia o model como `"WorkoutSession"`, e o push pode apagar dados.
+- No Windows, parar o `pnpm dev` em background pode deixar o processo do `tsx` vivo na 8080; confira a porta antes de subir de novo.
 
 ### Auditoria de setup (`Prompt-verificacao-projeto.md`)
 
@@ -24,7 +25,7 @@ Quando o usuário pedir para auditar ou corrigir o ambiente, siga esse prompt. E
 ## Comandos
 
 ```bash
-docker compose up -d          # PostgreSQL 16
+docker compose up -d          # PostgreSQL 16 em 127.0.0.1:5433
 pnpm exec prisma db push      # aplica o schema no banco do .env (dev)
 pnpm exec prisma generate     # obrigatório após qualquer mudança no schema.prisma / db push
 pnpm exec prisma format
@@ -37,6 +38,8 @@ pnpm exec eslint .            # inclui simple-import-sort (erro se imports fora 
 ```
 
 Não há testes configurados. Requer Node 24.x e pnpm (engine-strict).
+
+`tests/` guarda os documentos do trabalho de Qualidade e Teste de Software (guia, template do relatório e manual de IA). Eles pressupõem um "kit de partida" (Vitest, `src/build-app.ts`, `.env.test`) que ainda não existe aqui. Ao montá-lo: o banco de teste sai de `db push` (não há migrations); `bodyFatPercentage` vai de 0 a 1 e `weightInGrams` exige inteiro ≥ 1 (os limites do guia estão errados para este projeto); `StartWorkoutSession` retorna `{ id }`; e o código de erro é `SESSION_ALREADY_STARTED`.
 
 ## Arquitetura
 
@@ -70,5 +73,6 @@ Ainda falta o `POST /ai` (task 08). O roteiro espera Vercel AI SDK com streaming
 ## Divergências conhecidas
 
 - Porta: a API usa 8080 por causa do front; `general.md` ainda menciona 4949.
+- Porta do banco: as referências e o `README.md`/`AGENTS.md` usam 5432; o projeto usa 5433 (veja "Estado atual").
 - Nome do banco: o `DATABASE_URL` em `Configuracao_...` aponta para `bootcamp-treinos-db`; o `.env` usa `bootcamp-treinos-api-dev` (veja "Estado atual").
 - `src/schemas/index.ts` ainda usa `z.string().url()` / `.uuid()`; a regra pede validadores nativos do Zod v4 (`z.url()`, `z.uuid()`) em código novo.

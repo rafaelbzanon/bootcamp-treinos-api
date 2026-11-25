@@ -61,6 +61,9 @@ Estes desvios já foram autorizados e não devem ser revertidos:
 | `DATABASE_URL` | Banco `bootcamp-treinos-db` | Banco `bootcamp-treinos-api-dev` (no mesmo container) | O banco `bootcamp-treinos-api` foi criado por outra cópia do projeto e está fora de sincronia com o schema; o `-dev` foi criado com `db push` |
 | `prisma.config.ts` | Seção 11 do guia (fora do recorte) | Incluído | Obrigatório: o `schema.prisma` não define `url` |
 | `.env` | Sem chaves do Google | `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` vazias | Lidas por `src/lib/auth.ts`; preenchimento fora do escopo |
+| `PORT` / `BETTER_AUTH_URL` | `3000` (Configuração) | `8080` | O front (Next.js) usa a 3000 |
+| Porta do PostgreSQL | `127.0.0.1:5432:5432` (Configuração) / `5432:5432` (guia) | `127.0.0.1:5433:5432` e `DATABASE_URL` em `localhost:5433` | A 5432 é ocupada pelo serviço `postgresql-x64-18` do Windows (inicialização automática) |
+| `.env` `WEB_APP_BASE_URL` | Ausente | `http://localhost:3000` | Lida por `src/index.ts` (CORS) e `src/lib/auth.ts` (`trustedOrigins`) |
 
 ### Relatório Final
 Apresente um resumo estruturado contendo:
